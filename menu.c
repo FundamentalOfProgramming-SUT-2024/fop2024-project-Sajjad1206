@@ -20,6 +20,7 @@
 #define player_character "C"
 #define BLACK_GOLD_VALUE 5 
 #define FLOOR_HEIGHT (height_map / 4)
+//403106046
 
 typedef struct{
     char username[100];
@@ -668,11 +669,11 @@ int check_game_over(Map *map, WINDOW *window, const char *username) {
         save_amar_player(username, amar);
         wclear(window);
         box(window, 0, 0);
-        mvwprintw(window, 2, 2, "تبریک! شما به گنج نهایی رسیدید!");
-        mvwprintw(window, 3, 2, "امتیاز نهایی: %d", amar.score);
-        mvwprintw(window, 4, 2, "طلای جمع‌آوری شده: %d", map->gold);
-        mvwprintw(window, 5, 2, "زمان بازی: %ld ثانیه", time(NULL) - amar.first_play);
-        mvwprintw(window, 7, 2, "برای ادامه کلیدی را فشار دهید...");
+        mvwprintw(window, 2, 2, "finish");
+        mvwprintw(window, 3, 2, " score: %d", amar.score);
+        mvwprintw(window, 4, 2, "gold  : %d", map->gold);
+        mvwprintw(window, 5, 2, " time: %ld s", time(NULL) - amar.first_play);
+        mvwprintw(window, 7, 2, "press any key to continue");
         wrefresh(window);
         wgetch(window);
         return 1;
@@ -1236,7 +1237,7 @@ void continue_game(WINDOW *window, const char *username) {
                         
                         int c = wgetch(window);
                         switch(c) {
-                            case 27: { // ESC
+                            case 27: {
                                 char savename[100];
                                 wclear(window);
                                 box(window, 0, 0);
@@ -1307,16 +1308,16 @@ void taviz_tabagheh(Map *map, WINDOW *window, int direction) {
         up_did(map);
         char message[100];
         if(map->tabagheh_alan == 4) {
-            strcpy(map->payam, "به طبقه چهارم (آخر) رسیدید! اتاق گنج را پیدا کنید.");
+            strcpy(map->payam, "floor4");
         } else {
-            sprintf(message, "به طبقه %d رسیدید", map->tabagheh_alan);
+            sprintf(message, "floor  %d ", map->tabagheh_alan);
             strcpy(map->payam, message);
         }
     } else if ((direction == -1) && (map->tabagheh_alan > 1)) {
         map->tabagheh_alan--;
         up_did(map);
         char message[100];
-        sprintf(message, "به طبقه %d برگشتید", map->tabagheh_alan);
+        sprintf(message, " floor %d ", map->tabagheh_alan);
         strcpy(map->payam, message);
     }
 }
