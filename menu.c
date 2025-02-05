@@ -6,6 +6,9 @@
 #include<time.h>
 #include<locale.h>
 #include<wchar.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_mixer.h>
+
 #define FILENAME "users.txt"
 #define height_map 50
 #define width_map 100
@@ -14,20 +17,9 @@
 #define max_otagh 20
 #define min_otagh 6
 #define mahdoodeh_did 5
-#define player_character "\u2687"
+#define player_character "C"
 #define BLACK_GOLD_VALUE 5 
-
-
-#include <stdio.h>
-#include <string.h>
-#include <ncurses.h>
-#include <stdlib.h>
-#include <ctype.h>
-#include <time.h>
-#include <locale.h>
-#include <wchar.h>
-
-
+#define FLOOR_HEIGHT (height_map / 4)
 
 typedef struct{
     char username[100];
@@ -136,7 +128,27 @@ typedef enum {
 jahat tabdil_jahat_be_kelid(int kelid);
 int harkat_kardan(Map *map, jahat direct, WINDOW *window, const char *username);
 void harkat_sari(Map *map, jahat direct, WINDOW *window, const char *username);
+SDL_Window* window = NULL;
+SDL_Surface* screenSurface = NULL;
+Mix_Music* backgroundMusic = NULL;
 
+int initialize_SDL_and_music() {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+        printf("SDL initialization failed: %s\n", SDL_GetError());
+        return 0;
+    }
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        printf("SDL_mixer initialization failed: %s\n", Mix_GetError());
+        return 0;
+    }
+    backgroundMusic = Mix_LoadMUS("background_music.mp3");
+    if (backgroundMusic == NULL) {
+        printf("Failed to load music: %s\n", Mix_GetError());
+        return 0;
+    }
+    Mix_PlayMusic(backgroundMusic, -1);
+    return 1;
+}
 
 amar_player get_amar_player(const char *username){
     amar_player amar = {0};
@@ -255,7 +267,7 @@ void error(WINDOW *window , const char *payam){
 void neshan_dadan_payam(Map *map, WINDOW *window) {
     mvwprintw(window, height_map - 1, 1, "%s", map->payam);
     wrefresh(window);
-    napms(1000);  
+    napms(2500);  
     map->payam[0] = '\0';
 }
 
@@ -353,6 +365,37 @@ void selah_init(Map *map) {
     map->noe_selah = 0;
 }
 
+void ezafe_kardan_aslahe_random(Map *map, otagh *room) {
+    if (rand() % 100 < 40) {
+        int weapon_type = rand() % 5;  
+        int x = room->x + 1 + (rand() % (room->width - 2));
+        int y = room->y + 1 + (rand() % (room->height - 2));
+        if (map->cell[y][x] == kaf_otagh) {
+            map->cell[y][x] = aslahe;
+            map->selah[weapon_type].tedad++; 
+        }
+    }
+}
+
+void ezafe_kardan_tala(Map *map, otagh *room) {
+    for(int i = 0; i < 3; i++) {
+        if (rand() % 100 < 60) {
+            int x = room->x + 1 + (rand() % (room->width - 2));
+            int y = room->y + 1 + (rand() % (room->height - 2));
+            if (map->cell[y][x] == kaf_otagh) {
+                map->cell[y][x] = tala;
+            }
+        }
+    }
+    if (rand() % 100 < 10) {
+        int x = room->x + 1 + (rand() % (room->width - 2));
+        int y = room->y + 1 + (rand() % (room->height - 2));
+        if (map->cell[y][x] == kaf_otagh) {
+            map->cell[y][x] = talaye_siah;
+        }
+    }
+}
+
 void telesm_init(Map *map) {
     strcpy(map->telesm[0].esm, "Health");
     map->telesm[0].namad = 'H';
@@ -414,17 +457,6 @@ void map1(Map *map) {
     }
  }
  }
-
-void ezafe_kardan_talaye_siah(Map *map, otagh *room) {
-    if ((rand() % 100) < 10) {
-        int x = room->x + 1 + (rand() % (room->width - 2));
-        int y = room->y + 1 + (rand() % (room->height - 2));
-        if (map->cell[y][x] == kaf_otagh) {
-            map->cell[y][x] = talaye_siah;
-        }
-    }
-}
-
 
  void ezafe_kardan_ghaza(Map *map , otagh *room){
     if(map ->tedad_ghaza >= 5 ){
@@ -530,6 +562,19 @@ void ezafe_kardan_peleh(Map *map) {
         }
     }
 }
+
+void ezafe_kardan_aslahe_ba_namad(Map *map, otagh *room) {
+    for(int weapon_type = 0; weapon_type < 5; weapon_type++) {
+        if (rand() % 100 < 30) { 
+            int x = room->x + 1 + (rand() % (room->width - 2));
+            int y = room->y + 1 + (rand() % (room->height - 2));
+            if (map->cell[y][x] == kaf_otagh) {
+                map->cell[y][x] = map->selah[weapon_type].namad;
+            }
+        }
+    }
+}
+
 void show_inventory(Map *map , WINDOW *window){
     wclear(window);
     box(window,0,0);
@@ -611,32 +656,26 @@ void display_stats(Map *map, WINDOW *window) {
     if (strlen(map->payam) > 0) {
         mvwprintw(window, height_map - 1, 1, "%s", map->payam);
         wrefresh(window);
-        napms(1000); 
+        napms(2500); 
         map->payam[0] = '\0';
     }
 }
 
 int check_game_over(Map *map, WINDOW *window, const char *username) {
-    if (map->tabagheh_alan == 4) {
-        for (int i = 0; i < map->shomareh_room; i++) {
-            otagh room = map->room[i];
-            if (room.type == otagh_ganj && 
-                map->makan_x >= room.x && map->makan_x < room.x + room.width &&
-                map->makan_y >= room.y && map->makan_y < room.y + room.height) {
-                amar_player amar = get_amar_player(username);
-                amar.score += map->gold; 
-                save_amar_player(username, amar);
-                wclear(window);
-                box(window, 0, 0);
-                mvwprintw(window, 2, 2, "Congratulations! You've completed the game!");
-                mvwprintw(window, 3, 2, "Final Score: %d", amar.score);
-                mvwprintw(window, 4, 2, "Total Gold: %d", amar.gold);
-                mvwprintw(window, 6, 2, "Press any key to continue...");
-                wrefresh(window);
-                wgetch(window);
-                return 1;
-            }
-        }
+    if (map->cell[map->makan_y][map->makan_x] == 'X') {
+        amar_player amar = get_amar_player(username);
+        amar.score += map->gold * 2;
+        save_amar_player(username, amar);
+        wclear(window);
+        box(window, 0, 0);
+        mvwprintw(window, 2, 2, "تبریک! شما به گنج نهایی رسیدید!");
+        mvwprintw(window, 3, 2, "امتیاز نهایی: %d", amar.score);
+        mvwprintw(window, 4, 2, "طلای جمع‌آوری شده: %d", map->gold);
+        mvwprintw(window, 5, 2, "زمان بازی: %ld ثانیه", time(NULL) - amar.first_play);
+        mvwprintw(window, 7, 2, "برای ادامه کلیدی را فشار دهید...");
+        wrefresh(window);
+        wgetch(window);
+        return 1;
     }
     return 0;
 }
@@ -744,32 +783,25 @@ otagh sakht_otagh_jadid(){
 }
 
 void sakht_otagh_ganj(Map *map, otagh *room) {
-    if (map->tabagheh_alan != 4) {
-        return;
-    }
     room->type = otagh_ganj;
+    room->kashf_shodeh = 0;
+    int treasure_x = room->x + room->width - 2; 
+    int treasure_y = room->y + room->height - 2; 
+    map->cell[treasure_y][treasure_x] = 'X'; 
     for (int y = room->y + 1; y < room->y + room->height - 1; y++) {
         for (int x = room->x + 1; x < room->x + room->width - 1; x++) {
-            if ((rand() % 100) < 30 && map->cell[y][x] == kaf_otagh) {
+            if (map->cell[y][x] == kaf_otagh && (rand() % 100) < 30 && 
+                !(x == treasure_x && y == treasure_y)) {
                 map->cell[y][x] = taleh;
             }
         }
     }
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 15; i++) {  
         int x = room->x + 1 + (rand() % (room->width - 2));
         int y = room->y + 1 + (rand() % (room->height - 2));
-        if (map->cell[y][x] == kaf_otagh) {
+        if (map->cell[y][x] == kaf_otagh && !(x == treasure_x && y == treasure_y)) {
             map->cell[y][x] = tala;
         }
-    }
-    if (map->makan_x >= room->x && map->makan_x < room->x + room->width &&
-        map->makan_y >= room->y && map->makan_y < room->y + room->height) {
-        
-        amar_player amar = get_amar_player(map->username);
-        amar.score += map->gold; 
-        save_amar_player(map->username, amar);
-        
-        strcpy(map->payam, "You reached the treasure room! Game Over!");
     }
 }
 
@@ -814,40 +846,75 @@ void vasl_otagh(Map *map , otagh room1,otagh room2){
 }
 
 
-
 void map_kamel(Map *map) {
     map1(map);
     srand(time(NULL));
-    int attempts = 0;
-    const int MAX_ATTEMPTS = 1000;
-
-    while(map->shomareh_room < min_otagh && attempts < MAX_ATTEMPTS) {
-        otagh new_room = sakht_otagh_jadid();
+    int section_height = height_map / 4;
+    for(int section = 0; section < 4; section++) {
+        int current_floor = 4 - section; 
+        int y_start = section * section_height;
+        int num_rooms = 4 + (rand() % 3);
+        int section_width = width_map / num_rooms;
         
-        if(!hampooshani(map, new_room)) {
+        for(int room = 0; room < num_rooms; room++) {
+            if(map->shomareh_room >= max_otagh) break;
+            
+            otagh new_room;
+            new_room.width = section_width - 2;
+            new_room.height = section_height - 2;
+            new_room.x = room * section_width + 1;
+            new_room.y = y_start + 1;
+            new_room.kashf_shodeh = 0;
+            new_room.type = otagh_sadeh;
+            if(current_floor == 4 && room == num_rooms/2) {
+                new_room.type = otagh_ganj;
+            }
+            
             sakht_otagh(map, new_room);
-            if(map->tabagheh_alan == 4 && map->shomareh_room == min_otagh - 1) {
+            
+            if(new_room.type == otagh_ganj) {
                 sakht_otagh_ganj(map, &map->room[map->shomareh_room - 1]);
             }
-            else if((rand() % 100) < 30) {
-                sakht_otagh_telesm(map, &map->room[map->shomareh_room - 1]);
-            }
-            if(map->shomareh_room > 1) {
-                vasl_otagh(map, map->room[map->shomareh_room - 2], new_room);
-            }
+            
+            ezafe_kardan_tala(map, &map->room[map->shomareh_room - 1]);
+            ezafe_kardan_aslahe_random(map, &map->room[map->shomareh_room - 1]);
             ezafe_kardan_ghaza(map, &map->room[map->shomareh_room - 1]);
-            ezafe_kardan_talaye_siah(map, &map->room[map->shomareh_room - 1]);
+            if(room > 0) {
+                int prev_room_x = ((room - 1) * section_width) + (section_width / 2);
+                int current_room_x = (room * section_width) + (section_width / 2);
+                int corridor_y = y_start + (section_height / 2);
+                
+                for(int x = prev_room_x; x <= current_room_x; x++) {
+                    if(map->cell[corridor_y][x] != dar_otagh)
+                        map->cell[corridor_y][x] = rahro;
+                }
+            }
         }
-        attempts++;
+        if(section < 3) {
+            int x = width_map / 2 + (rand() % (width_map/4) - width_map/8);
+            for(int y = y_start + section_height - 1;
+                y <= y_start + section_height + 1; y++) {
+                if(map->cell[y][x] != dar_otagh)
+                    map->cell[y][x] = peleh;
+            }
+        }
     }
-    if(map->shomareh_room > 0) {
-        otagh first_room = map->room[0];
-        map->makan_x = first_room.x + first_room.width / 2;
-        map->makan_y = first_room.y + first_room.height / 2;
-        ezafe_kardan_peleh(map);
-        up_did(map);
+    int bottom_section = 3 * section_height; 
+    int start_room_found = 0;
+    
+    for(int i = 0; i < map->shomareh_room; i++) {
+        if(map->room[i].y >= bottom_section) {
+            map->makan_x = map->room[i].x + map->room[i].width/2;
+            map->makan_y = map->room[i].y + map->room[i].height/2;
+            map->room[i].kashf_shodeh = 1;
+            start_room_found = 1;
+            break;
+        }
     }
+    map->tabagheh_alan = 1;
+    up_did(map);
 }
+
 
 void ezafe_kardan_dar_ramzdar(Map *map , otagh *room){
     int samt = rand() % 4;
@@ -900,29 +967,21 @@ void chap_map(Map *map, WINDOW *window) {
         fscanf(file, "%d %d", &setting_user.sath, &setting_user.rang_shakhsiat);
         fclose(file);
     }
-
     for (int y = 0; y < height_map; y++) {
         for (int x = 0; x < width_map; x++) {
             if (map->did[y][x] != khali_otagh) {
                 int color_pair = 1; 
                 for (int i = 0; i < map->shomareh_room; i++) {
-                    if (x >= map->room[i].x && x < map->room[i].x + map->room[i].width &&
-                        y >= map->room[i].y && y < map->room[i].y + map->room[i].height) {
-                        
-                        switch (map->room[i].type) {
-                            case otagh_ganj:
-                                color_pair = 2;
-                                break;
-                            case otagh_telesm:
-                                color_pair = 3; 
-                                break;
-                            default:
-                                color_pair = 1; 
+                    otagh *current_room = &map->room[i];
+                    if (x >= current_room->x && x < current_room->x + current_room->width &&
+                        y >= current_room->y && y < current_room->y + current_room->height) {
+                        if (current_room->type == otagh_ganj) {
+                            color_pair = 2; 
                         }
                         break;
                     }
                 }
-                
+
                 wattron(window, COLOR_PAIR(color_pair));
                 mvwaddch(window, y, x, map->did[y][x]);
                 wattroff(window, COLOR_PAIR(color_pair));
@@ -934,9 +993,10 @@ void chap_map(Map *map, WINDOW *window) {
     wattron(window, COLOR_PAIR(setting_user.rang_shakhsiat + 1));
     mvwprintw(window, map->makan_y, map->makan_x, player_character);
     wattroff(window, COLOR_PAIR(setting_user.rang_shakhsiat + 1));
-    
+
     wrefresh(window);
 }
+
 
 void atraf(Map *map,WINDOW *window){
     int taghir = 0;
@@ -1022,132 +1082,213 @@ int load_map(Map *map, const char *username , const char *savename){
 
 
 void create_new_game(WINDOW *window, const char *username) {
+    initialize_SDL_and_music();
     amar_player amar = {0};
     amar.first_play = time(NULL);
     amar.tedad_bazi = 1;
     save_amar_player(username, amar);
-
     Map game_map;
     strcpy(game_map.username, username);
     map_kamel(&game_map);
-    
+    wresize(window, LINES, COLS);
+    keypad(window, TRUE);
+    gamesetting setting_user = {2, COLOR_WHITE};
+    FILE *file = fopen("setting.txt", "r");
+    if (file) {
+        fscanf(file, "%d %d", &setting_user.sath, &setting_user.rang_shakhsiat);
+        fclose(file);
+    }
     while(1) {
         display_stats(&game_map, window);
-        
         chap_map(&game_map, window);
-        
         if (check_game_over(&game_map, window, username)) {
             break;
         }
-
         int c = wgetch(window);
-        
-        if(c == 27) { 
-            char savename[100];
-            wclear(window);
-            box(window, 0, 0);
-            mvwprintw(window, 1, 1, "Enter save name: ");
-            echo();
-            wgetstr(window, savename);
-            noecho();
-            save_game(username, savename);
-            save_map(&game_map, username, savename);
-            break;
-        }
-        if(c == 'E' || c == 'e') {
-            namayesh_menu_ghaza(&game_map, window);
-            continue;
-        }
-        jahat direct = tabdil_jahat_be_kelid(c);
-        if(direct != -1) {
-            harkat_kardan(&game_map, direct, window, username);
-            continue;
-        }
-        if(c == 'f') {
-            c = wgetch(window);
-            direct = tabdil_jahat_be_kelid(c);
-            if(direct != -1) {
-                harkat_sari(&game_map, direct, window, username);
+        switch(c) {
+            case 27: { 
+                char savename[100];
+                wclear(window);
+                box(window, 0, 0);
+                mvwprintw(window, 1, 1, "Enter save name: ");
+                echo();
+                wgetstr(window, savename);
+                noecho();
+                save_game(username, savename);
+                save_map(&game_map, username, savename);
+                Mix_HaltMusic(); 
+                Mix_FreeMusic(backgroundMusic);
+                Mix_CloseAudio();
+                SDL_Quit();
+                return;
+            }
+            
+            case 'E':
+            case 'e': {
+                namayesh_menu_ghaza(&game_map, window);
+                continue;
+            }
+            
+            case 'I':
+            case 'i': {
+                show_inventory(&game_map, window);
+                continue;
+            }
+            
+            case 's': {
+                atraf(&game_map, window);
+                continue;
+            }
+            
+            case 'f': {
+                c = wgetch(window);
+                jahat direct = tabdil_jahat_be_kelid(c);
+                if(direct != -1) {
+                    harkat_sari(&game_map, direct, window, username);
+                }
+                continue;
+            }
+            
+            default: {
+                jahat direct = tabdil_jahat_be_kelid(c);
+                if(direct != -1) {
+                    harkat_kardan(&game_map, direct, window, username);
+                }
             }
         }
-        if(c == 's') {
-            atraf(&game_map, window);
-        }
+        afzayesh_gorosnegi(&game_map);
+        neshan_dadan_navar_gorosnegi(&game_map, window);
     }
+    Mix_HaltMusic();
+    Mix_FreeMusic(backgroundMusic);
+    Mix_CloseAudio();
+    SDL_Quit();
 }
 
-void continue_game(WINDOW *window , const char *username){
+void continue_game(WINDOW *window, const char *username) {
+    Map game_map = {0};  
     wclear(window);
     box(window,0,0);
     savegame saves[20];
-    int shomareh_save =0;
-    int entekhab =0;
+    int shomareh_save = 0;
+    int entekhab = 0;
+    
     FILE *file = fopen("saves.txt","r");
-    if(!file){
+    if(!file) {
         mvwprintw(window,1,1,"no save game found");
         wrefresh(window);
         getch();
         return;
     }
+    
     char khat[256];
-    while(fgets(khat,sizeof(khat),file) && shomareh_save<20){
-        if (sscanf(khat,"%s %s %ld" , saves[shomareh_save].username , saves[shomareh_save].savename ,&saves[shomareh_save].save_time) == 3){
-           if(strcmp(saves[shomareh_save].username , username) == 0){
-            shomareh_save++ ;
-           }
+    while(fgets(khat,sizeof(khat),file) && shomareh_save<20) {
+        if (sscanf(khat,"%s %s %ld", saves[shomareh_save].username, 
+                   saves[shomareh_save].savename, &saves[shomareh_save].save_time) == 3) {
+            if(strcmp(saves[shomareh_save].username, username) == 0) {
+                shomareh_save++;
+            }
         }
     }
     fclose(file);
-    if(shomareh_save == 0 ){
-        mvwprintw(window,1,1," no save found");
+    
+    if(shomareh_save == 0) {
+        mvwprintw(window,1,1,"no save found");
         wrefresh(window);
         getch();
         return;
     }
-    while(1){
+    
+    while(1) {
         wclear(window);
         box(window,0,0);
         mvwprintw(window,1,1,"select save : ");
-        for(int i=0 ; i<shomareh_save ; i++){
-            if( i == entekhab){
-                wattron(window,A_REVERSE);
-            }
-            mvwprintw(window,i+3,1,"%s - %s" , saves[i].savename , ctime(&saves[i].save_time));
-            if( i == entekhab){
-                wattroff(window,A_REVERSE);
-            }
+        for(int i=0; i<shomareh_save; i++) {
+            if(i == entekhab) wattron(window,A_REVERSE);
+            mvwprintw(window,i+3,1,"%s - %s", saves[i].savename, ctime(&saves[i].save_time));
+            if(i == entekhab) wattroff(window,A_REVERSE);
         }
         wrefresh(window);
+        
         int c = getch();
-        switch(c){
-            case KEY_UP: entekhab = (entekhab - 1 + shomareh_save) % shomareh_save;
-            break;
-            case KEY_DOWN: entekhab = (entekhab + 1) % shomareh_save;
-            break;
-            case'\n':{
-                Map game_map;
-                if(load_map(&game_map,username,saves[entekhab].savename)){
-                    while(1){
-                        chap_map(&game_map,window);
-                        int c = wgetch(window);
-                        if(c == 27){
-                            char savename[100];
-                            wclear(window);
-                            box(window,0,0);
-                            mvwprintw(window,1,1,"enter save name :");
-                            echo();
-                            wgetstr(window,savename);
-                            noecho();
-                            save_game(username,savename);
-                            save_map(&game_map,username,savename);
-                            break;
+        switch(c) {
+            case KEY_UP: 
+                entekhab = (entekhab - 1 + shomareh_save) % shomareh_save;
+                break;
+            case KEY_DOWN: 
+                entekhab = (entekhab + 1) % shomareh_save;
+                break;
+            case '\n': {
+                if(load_map(&game_map, username, saves[entekhab].savename)) {
+                    initialize_SDL_and_music();
+                    strcpy(game_map.username, username);
+                    while(1) {
+                        display_stats(&game_map, window);
+                        chap_map(&game_map, window);
+                        
+                        if (check_game_over(&game_map, window, username)) {
+                            Mix_HaltMusic();
+                            Mix_FreeMusic(backgroundMusic);
+                            Mix_CloseAudio();
+                            SDL_Quit();
+                            return;
                         }
+                        
+                        int c = wgetch(window);
+                        switch(c) {
+                            case 27: { // ESC
+                                char savename[100];
+                                wclear(window);
+                                box(window, 0, 0);
+                                mvwprintw(window, 1, 1, "enter save name :");
+                                echo();
+                                wgetstr(window, savename);
+                                noecho();
+                                save_game(username, savename);
+                                save_map(&game_map, username, savename);
+                                Mix_HaltMusic();
+                                Mix_FreeMusic(backgroundMusic);
+                                Mix_CloseAudio();
+                                SDL_Quit();
+                                return;
+                            }
+                            
+                            case 'E':
+                            case 'e': 
+                                namayesh_menu_ghaza(&game_map, window);
+                                break;
+                            
+                            case 'I':
+                            case 'i':
+                                show_inventory(&game_map, window);
+                                break;
+                            
+                            case 's':
+                                atraf(&game_map, window);
+                                break;
+                            
+                            case 'f': {
+                                c = wgetch(window);
+                                jahat direct = tabdil_jahat_be_kelid(c);
+                                if(direct != -1) 
+                                    harkat_sari(&game_map, direct, window, username);
+                                break;
+                            }
+                            
+                            default: {
+                                jahat direct = tabdil_jahat_be_kelid(c);
+                                if(direct != -1) 
+                                    harkat_kardan(&game_map, direct, window, username);
+                            }
+                        }
+                        afzayesh_gorosnegi(&game_map);
+                        neshan_dadan_navar_gorosnegi(&game_map, window);
                     }
                 }
-            return;
+                return;
             }
             case 27:
-            return;
+                return;
         }
     }
 }
@@ -1160,14 +1301,23 @@ int harkat_momken(Map *map , int new_x , int new_y){
     return(cell != divar1_otagh && cell != divar2_otagh && cell != sotoon);
 }
 
-void taviz_tabagheh(Map *map , WINDOW *window , int direction){
-    if( (direction == 1) && (map -> tabagheh_alan<4)){
-        map -> tabagheh_alan++;
-        map1(map);
-        map_kamel(map);
-    }
-    else if( (direction == -1) && (map ->tabagheh_alan > 1)){
-        map ->tabagheh_alan --;
+void taviz_tabagheh(Map *map, WINDOW *window, int direction) {
+    if ((direction == 1) && (map->tabagheh_alan < 4)) {
+        map->tabagheh_alan++;
+        up_did(map);
+        char message[100];
+        if(map->tabagheh_alan == 4) {
+            strcpy(map->payam, "به طبقه چهارم (آخر) رسیدید! اتاق گنج را پیدا کنید.");
+        } else {
+            sprintf(message, "به طبقه %d رسیدید", map->tabagheh_alan);
+            strcpy(map->payam, message);
+        }
+    } else if ((direction == -1) && (map->tabagheh_alan > 1)) {
+        map->tabagheh_alan--;
+        up_did(map);
+        char message[100];
+        sprintf(message, "به طبقه %d برگشتید", map->tabagheh_alan);
+        strcpy(map->payam, message);
     }
 }
 
